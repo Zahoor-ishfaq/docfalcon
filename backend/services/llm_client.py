@@ -6,7 +6,7 @@ import logging
 from anthropic import Anthropic, APIError as AnthropicError
 from groq import Groq, APIError as GroqError
 
-from core.config import settings
+from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _calc_cost(provider: str, tokens_in: int, tokens_out: int) -> float:
 
 def extract(text: str, doc_type: str) -> dict:
     """OCR text + doc_type → validated dict. Retries once on malformed output."""
-    from models.extraction import EXTRACTION_MODELS
+    from backend.models.extraction import EXTRACTION_MODELS
 
     if doc_type not in EXTRACTION_MODELS:
         raise ValueError(f"Unknown doc_type: {doc_type}")

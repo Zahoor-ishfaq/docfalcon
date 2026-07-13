@@ -61,7 +61,7 @@ def _ocr_image(file_bytes: bytes) -> str:
 
 
 def _ocr_pdf(file_bytes: bytes) -> str:
-    from core.config import settings
+    from backend.core.config import settings
     poppler = settings.POPPLER_PATH or None
     pages = convert_from_bytes(file_bytes, dpi=300, poppler_path=poppler)
     texts = [extract_text_from_image(page) for page in pages]

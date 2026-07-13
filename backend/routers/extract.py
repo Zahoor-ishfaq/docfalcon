@@ -2,13 +2,14 @@
 
 import hashlib
 import logging
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from bson import ObjectId
 
-from services.ocr import extract_text
-from services.llm_client import extract, ExtractionError
-from core.config import settings
-from core.database import get_db
+from backend.services.ocr import extract_text
+from backend.services.llm_client import extract, ExtractionError
+from backend.core.config import settings
+from backend.core.database import get_db
+from backend.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/extract", tags=["extract"])
 logger = logging.getLogger(__name__)
@@ -16,9 +17,6 @@ logger = logging.getLogger(__name__)
 ALLOWED_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 DOC_TYPES = {"iqama", "visa", "contract"}
 MAX_SIZE = 5 * 1024 * 1024  # 5MB
-
-# Placeholder until Epic 4 auth attaches a real company_id.
-DEV_COMPANY_ID = "000000000000000000000001"
 
 MAGIC = {
     b"\xff\xd8\xff": "image/jpeg",
@@ -52,6 +50,7 @@ def _serialize_doc(d: dict) -> dict:
 async def extract_document(
     file: UploadFile = File(...),
     doc_type: str = Query(..., description="iqama | visa | contract"),
+    current_user: dict = Depends(get_current_user),
 ):
     """Upload a document, get structured JSON back. Idempotent by file hash."""
     if doc_type not in DOC_TYPES:
@@ -69,7 +68,7 @@ async def extract_document(
 
     file_hash = hashlib.sha256(contents).hexdigest()
     db = get_db()
-    company_oid = ObjectId(DEV_COMPANY_ID)
+    company_oid = ObjectId(current_user["company_id"])
 
     # Idempotency: same file + same company → return prior extraction, skip LLM call.
     existing = await db.documents.find_one({"file_hash": file_hash, "company_id": company_oid})
@@ -91,7 +90,7 @@ async def extract_document(
     # Store hash + extracted JSON only. Original file bytes are discarded.
     doc = {
         "company_id": company_oid,
-        "employee_id": None,  # linked later via employees API
+        "employee_id": None,
         "doc_type": doc_type,
         "file_hash": file_hash,
         "extracted_fields": result,
@@ -113,7 +112,10 @@ async def extract_document(
 
 
 @router.post("/ocr-test")
-async def ocr_test(file: UploadFile = File(...)):
+async def ocr_test(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
     """Dev-only: upload image/PDF, get raw OCR text back."""
     if settings.ENVIRONMENT != "development":
         raise HTTPException(403, "This endpoint is disabled in production")
@@ -129,5 +131,4 @@ async def ocr_test(file: UploadFile = File(...)):
     _validate_magic(contents[:8], file.content_type)
 
     raw_text = extract_text(contents, file.content_type)
-
     return {"filename": file.filename, "content_type": file.content_type, "raw_text": raw_text}

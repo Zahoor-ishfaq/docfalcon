@@ -11,8 +11,8 @@ sys.path.insert(0, str(SAMPLES))
 from generate_visa import RECORDS as VISA_RECORDS
 from generate_contract import RECORDS as CONTRACT_RECORDS
 
-from services.ocr import extract_text
-from services.llm_client import extract
+from backend.services.ocr import extract_text
+from backend.services.llm_client import extract
 
 
 def load_iqama_pairs():

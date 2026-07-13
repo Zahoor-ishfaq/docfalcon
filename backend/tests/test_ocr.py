@@ -16,7 +16,7 @@ class TestOCRImage:
 
     def test_iqama_extracts_key_fields(self):
         """All 10 iqamas should return name, iqama number, and nationality."""
-        from services.ocr import extract_text
+        from backend.services.ocr import extract_text
 
         for img in sorted((SAMPLES / "iqama").glob("*.png")):
             with open(img, "rb") as f:
@@ -27,7 +27,7 @@ class TestOCRImage:
 
     def test_visa_extracts_key_fields(self):
         """All 5 visas should return readable text."""
-        from services.ocr import extract_text
+        from backend.services.ocr import extract_text
 
         for img in sorted((SAMPLES / "visa").glob("*.png")):
             with open(img, "rb") as f:
@@ -40,7 +40,7 @@ class TestOCRPdf:
 
     def test_contract_extracts_text(self):
         """All 5 contracts should return substantial text."""
-        from services.ocr import extract_text
+        from backend.services.ocr import extract_text
 
         for pdf in sorted((SAMPLES / "contract").glob("*.pdf")):
             with open(pdf, "rb") as f:

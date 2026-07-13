@@ -3,10 +3,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from core.config import settings
-from core.database import ping_db
-from routers.extract import router as extract_router
-from routers import employees
+from backend.core.config import settings
+from backend.core.database import ping_db
+from backend.routers.extract import router as extract_router
+from backend.routers.employees import router as employees_router
+from backend.routers.auth import router as auth_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("docfalcon")
@@ -20,8 +21,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(extract_router)
-app.include_router(employees.router)
+app.include_router(employees_router)
 
 
 # Log full trace server-side, return clean JSON to client (no stack traces leaked).
