@@ -1,0 +1,46 @@
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+google-vision-key.json
+*-credentials.json
+
+# Python / backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
+
+# Logs
+logs/
+*.log
+
+# Uploaded / generated
+/uploads/
