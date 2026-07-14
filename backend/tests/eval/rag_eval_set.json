@@ -1,0 +1,50 @@
+[
+  {
+    "doc_type": "iqama",
+    "sample_path": "docs/samples/iqama/iqama_01.png",
+    "questions": [
+      {"question": "What is the iqama number?", "ground_truth": "The iqama number is stated on the document."},
+      {"question": "When does the iqama expire?", "ground_truth": "The iqama expiry date is on the document."},
+      {"question": "What is the holder's nationality?", "ground_truth": "The nationality is listed on the iqama."},
+      {"question": "What is the profession?", "ground_truth": "The profession is stated on the iqama."},
+      {"question": "Who is the employer?", "ground_truth": "The employer name appears on the iqama."},
+      {"question": "What is the date of birth?", "ground_truth": "The date of birth appears on the iqama."},
+      {"question": "What is the place of issue?", "ground_truth": "The place of issue is on the iqama."},
+      {"question": "What is the holder's full name?", "ground_truth": "The full name is on the iqama."},
+      {"question": "What religion is stated?", "ground_truth": "The religion field appears on the iqama."},
+      {"question": "What is the employer ID?", "ground_truth": "The employer ID is on the iqama."}
+    ]
+  },
+  {
+    "doc_type": "visa",
+    "sample_path": "docs/samples/visa/visa_01.png",
+    "questions": [
+      {"question": "What is the visa number?", "ground_truth": "The visa number is on the document."},
+      {"question": "What is the visa expiry date?", "ground_truth": "The visa expiry date is on the document."},
+      {"question": "What is the visa type?", "ground_truth": "The visa type is stated."},
+      {"question": "What is the passport number?", "ground_truth": "The passport number appears on the visa."},
+      {"question": "What is the holder's nationality?", "ground_truth": "The nationality is listed."},
+      {"question": "What is the issue date?", "ground_truth": "The issue date is on the visa."},
+      {"question": "What is the sponsor's name?", "ground_truth": "The sponsor name is on the visa."},
+      {"question": "What is the duration of stay?", "ground_truth": "The duration is stated on the visa."},
+      {"question": "What is the visa purpose?", "ground_truth": "The purpose is on the visa."},
+      {"question": "What is the holder's full name?", "ground_truth": "The full name is on the visa."}
+    ]
+  },
+  {
+    "doc_type": "contract",
+    "sample_path": "docs/samples/contract/contract_01.pdf",
+    "questions": [
+      {"question": "What is the employee's monthly salary?", "ground_truth": "The salary is stated in the contract."},
+      {"question": "What is the contract duration?", "ground_truth": "The duration is in the contract."},
+      {"question": "What is the job title?", "ground_truth": "The job title is in the contract."},
+      {"question": "What is the probation period?", "ground_truth": "The probation period is stated."},
+      {"question": "How many annual leave days are granted?", "ground_truth": "Annual leave days are stated."},
+      {"question": "What is the notice period for termination?", "ground_truth": "The notice period is in the contract."},
+      {"question": "What is the working hours per week?", "ground_truth": "Working hours are stated."},
+      {"question": "Who is the employer?", "ground_truth": "The employer is named."},
+      {"question": "What is the employee's name?", "ground_truth": "The employee name is in the contract."},
+      {"question": "What is the contract start date?", "ground_truth": "The start date is in the contract."}
+    ]
+  }
+]

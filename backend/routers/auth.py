@@ -4,7 +4,7 @@ from fastapi import APIRouter, Cookie, HTTPException, Response
 from google.auth.transport import requests as grequests
 from google.oauth2 import id_token as google_id_token
 from jose import JWTError
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from backend.core.config import settings
 from backend.core.database import get_db
@@ -24,20 +24,29 @@ _SECURE = settings.ENVIRONMENT == "production"
 
 class RegisterBody(BaseModel):
     email: EmailStr
-    password: str
-    company_name: str
+    password: str = Field(min_length=8, max_length=72)
+    company_name: str = Field(min_length=1, max_length=200)
 
 
 class LoginBody(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=72)
 
 
 class GoogleBody(BaseModel):
     id_token: str
 
 
-def _set_refresh(response: Response, token: str) -> None:
+async def _issue_refresh(response: Response, uid: str, cid: str) -> None:
+    """Persist the jti so a consumed refresh token can never be replayed."""
+    token, jti, expires_at = create_refresh_token(uid, cid)
+    db = get_db()
+    await db.refresh_tokens.insert_one({
+        "jti": jti,
+        "user_id": uid,
+        "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=token,
@@ -45,6 +54,7 @@ def _set_refresh(response: Response, token: str) -> None:
         secure=_SECURE,
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
     )
 
 
@@ -70,7 +80,7 @@ async def register(body: RegisterBody, response: Response):
         })).inserted_id
     )
 
-    _set_refresh(response, create_refresh_token(user_id, company_id))
+    await _issue_refresh(response, user_id, company_id)
     return {"access_token": create_access_token(user_id, company_id), "token_type": "bearer"}
 
 
@@ -78,11 +88,11 @@ async def register(body: RegisterBody, response: Response):
 async def login(body: LoginBody, response: Response):
     db = get_db()
     user = await db.users.find_one({"email": body.email})
-    if not user or not verify_password(body.password, user["password_hash"]):
+    if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
 
     uid, cid = str(user["_id"]), user["company_id"]
-    _set_refresh(response, create_refresh_token(uid, cid))
+    await _issue_refresh(response, uid, cid)
     return {"access_token": create_access_token(uid, cid), "token_type": "bearer"}
 
 
@@ -98,14 +108,29 @@ async def refresh(
     except JWTError:
         raise HTTPException(401, "Invalid or expired refresh token")
 
+    db = get_db()
+    # Single-use: consuming the jti here means a replayed token finds nothing.
+    consumed = await db.refresh_tokens.find_one_and_delete({"jti": payload["jti"]})
+    if not consumed:
+        raise HTTPException(401, "Refresh token already used or revoked")
+
     uid, cid = payload["sub"], payload["company_id"]
-    _set_refresh(response, create_refresh_token(uid, cid))
+    await _issue_refresh(response, uid, cid)
     return {"access_token": create_access_token(uid, cid), "token_type": "bearer"}
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie(REFRESH_COOKIE)
+async def logout(
+    response: Response,
+    token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
+):
+    if token:
+        try:
+            payload = decode_token(token, "refresh")
+            await get_db().refresh_tokens.delete_one({"jti": payload["jti"]})
+        except JWTError:
+            pass  # already invalid — nothing to revoke
+    response.delete_cookie(REFRESH_COOKIE, path="/")
     return {"detail": "Logged out"}
 
 
@@ -144,5 +169,5 @@ async def google_auth(body: GoogleBody, response: Response):
             })).inserted_id
         )
 
-    _set_refresh(response, create_refresh_token(uid, cid))
+    await _issue_refresh(response, uid, cid)
     return {"access_token": create_access_token(uid, cid), "token_type": "bearer"}

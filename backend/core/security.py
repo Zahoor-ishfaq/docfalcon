@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -22,6 +23,7 @@ def _make_token(
     company_id: str,
     kind: Literal["access", "refresh"],
     expires_delta: timedelta,
+    jti: str | None = None,
 ) -> str:
     payload = {
         "sub": sub,
@@ -29,6 +31,8 @@ def _make_token(
         "kind": kind,
         "exp": datetime.now(timezone.utc) + expires_delta,
     }
+    if jti:
+        payload["jti"] = jti
     return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
 
@@ -38,10 +42,16 @@ def create_access_token(sub: str, company_id: str) -> str:
     )
 
 
-def create_refresh_token(sub: str, company_id: str) -> str:
-    return _make_token(
-        sub, company_id, "refresh", timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+def create_refresh_token(sub: str, company_id: str) -> tuple[str, str, datetime]:
+    """Returns (token, jti, expires_at) — jti must be persisted for rotation."""
+    jti = uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    token = _make_token(
+        sub, company_id, "refresh",
+        timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        jti=jti,
     )
+    return token, jti, expires_at
 
 
 def decode_token(token: str, expected_kind: Literal["access", "refresh"]) -> dict:
@@ -49,4 +59,6 @@ def decode_token(token: str, expected_kind: Literal["access", "refresh"]) -> dic
     payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
     if payload.get("kind") != expected_kind:
         raise JWTError("wrong token kind")
+    if expected_kind == "refresh" and not payload.get("jti"):
+        raise JWTError("refresh token missing jti")
     return payload

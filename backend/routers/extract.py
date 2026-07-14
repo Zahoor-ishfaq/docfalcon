@@ -1,37 +1,32 @@
 """Extraction routes — OCR + LLM pipeline."""
 
 import hashlib
+import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from bson import ObjectId
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.services.ocr import extract_text
 from backend.services.llm_client import extract, ExtractionError
+from backend.services.rag import index_document
+from backend.services.cache import cache_get, cache_set, cache_delete
+from backend.tools.classify_document import classify_document
 from backend.core.config import settings
 from backend.core.database import get_db
 from backend.core.dependencies import get_current_user
+from backend.core.files import validate_magic, sanitize_filename
 
 router = APIRouter(prefix="/extract", tags=["extract"])
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 DOC_TYPES = {"iqama", "visa", "contract"}
 MAX_SIZE = 5 * 1024 * 1024  # 5MB
-
-MAGIC = {
-    b"\xff\xd8\xff": "image/jpeg",
-    b"\x89PNG": "image/png",
-    b"%PDF": "application/pdf",
-}
-
-
-def _validate_magic(header: bytes, claimed: str) -> None:
-    for sig, mime in MAGIC.items():
-        if header.startswith(sig):
-            if mime != claimed:
-                raise HTTPException(400, "File content doesn't match extension")
-            return
-    raise HTTPException(400, "Unrecognized file format")
+TTL_EXTRACT = 86400  # 24h — extraction output for a given file hash is immutable
 
 
 def _serialize_doc(d: dict) -> dict:
@@ -47,7 +42,9 @@ def _serialize_doc(d: dict) -> dict:
 
 
 @router.post("")
+@limiter.limit("10/minute")
 async def extract_document(
+    request: Request,
     file: UploadFile = File(...),
     doc_type: str = Query(..., description="iqama | visa | contract"),
     current_user: dict = Depends(get_current_user),
@@ -59,24 +56,58 @@ async def extract_document(
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, f"Allowed types: jpg, png, pdf. Got: {file.content_type}")
 
+    sanitize_filename(file.filename or "")
+
     contents = await file.read()
 
     if len(contents) > MAX_SIZE:
         raise HTTPException(400, f"File exceeds 5MB limit ({len(contents)} bytes)")
 
-    _validate_magic(contents[:8], file.content_type)
+    validate_magic(contents[:8], file.content_type)
 
     file_hash = hashlib.sha256(contents).hexdigest()
     db = get_db()
     company_oid = ObjectId(current_user["company_id"])
 
-    # Idempotency: same file + same company → return prior extraction, skip LLM call.
+    # Company-scoped key — the same file uploaded by two tenants must never cross over.
+    cache_key = f"extract:{company_oid}:{file_hash}"
+    hit = await cache_get(cache_key)
+    if hit:
+        return json.loads(hit)
+
     existing = await db.documents.find_one({"file_hash": file_hash, "company_id": company_oid})
     if existing:
-        return _serialize_doc(existing)
+        payload = _serialize_doc(existing)
+        await cache_set(cache_key, json.dumps(payload), TTL_EXTRACT)
+        return payload
 
     try:
         raw_text = extract_text(contents, file.content_type)
+    except Exception as e:
+        logger.error("ocr_error doc_type=%s error=%s", doc_type, str(e)[:200])
+        raise HTTPException(500, "OCR failed")
+
+    # Guard against mislabeled uploads before spending LLM tokens on extraction.
+    try:
+        classification = await classify_document(raw_text)
+        detected = classification.get("doc_type")
+        confidence = classification.get("confidence", 0)
+        if detected and detected != doc_type and confidence >= 0.7:
+            raise HTTPException(
+                409,
+                detail={
+                    "detail": f"Document appears to be a '{detected}', not '{doc_type}'.",
+                    "detected": detected,
+                    "claimed": doc_type,
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Classifier failure must never block extraction — log and continue.
+        logger.warning("classify_failed doc_type=%s error=%s", doc_type, str(e)[:200])
+
+    try:
         result = extract(raw_text, doc_type)
     except ExtractionError as e:
         raise HTTPException(422, f"Extraction failed: {e}")
@@ -87,20 +118,29 @@ async def extract_document(
     meta = result.pop("_meta", {})
     tokens_used = (meta.get("tokens_in") or 0) + (meta.get("tokens_out") or 0)
 
-    # Store hash + extracted JSON only. Original file bytes are discarded.
     doc = {
         "company_id": company_oid,
         "employee_id": None,
         "doc_type": doc_type,
         "file_hash": file_hash,
         "extracted_fields": result,
+        "raw_text": raw_text,
         "llm_provider": meta.get("provider"),
         "tokens_used": tokens_used,
         "cost_usd": meta.get("cost_usd"),
+        "created_at": datetime.now(timezone.utc),
     }
-    await db.documents.insert_one(doc)
+    inserted = await db.documents.insert_one(doc)
 
-    return {
+    try:
+        await index_document(str(inserted.inserted_id), str(company_oid), doc_type, raw_text, extracted_fields=result)
+    except Exception as e:
+        logger.error("rag_index_failed doc_id=%s error=%s", inserted.inserted_id, str(e)[:200])
+
+    # New document changes total_documents — stats cache is now stale.
+    await cache_delete(f"stats:{company_oid}")
+
+    payload = {
         "doc_type": doc_type,
         "fields": result,
         "llm_provider": meta.get("provider"),
@@ -109,26 +149,6 @@ async def extract_document(
         "file_hash": file_hash,
         "cached": False,
     }
-
-
-@router.post("/ocr-test")
-async def ocr_test(
-    file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
-):
-    """Dev-only: upload image/PDF, get raw OCR text back."""
-    if settings.ENVIRONMENT != "development":
-        raise HTTPException(403, "This endpoint is disabled in production")
-
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(400, f"Allowed types: jpg, png, pdf. Got: {file.content_type}")
-
-    contents = await file.read()
-
-    if len(contents) > MAX_SIZE:
-        raise HTTPException(400, f"File exceeds 5MB limit ({len(contents)} bytes)")
-
-    _validate_magic(contents[:8], file.content_type)
-
-    raw_text = extract_text(contents, file.content_type)
-    return {"filename": file.filename, "content_type": file.content_type, "raw_text": raw_text}
+    # Store with cached=True so a replay reports correctly; this caller still sees False.
+    await cache_set(cache_key, json.dumps({**payload, "cached": True}), TTL_EXTRACT)
+    return payload

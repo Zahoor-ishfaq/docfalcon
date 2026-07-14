@@ -1,18 +1,19 @@
 from datetime import date, datetime, timedelta
 from pydantic import Field
+from backend.core.validators import SafeStr
 from .base import MongoModel, PyObjectId, utcnow
 
 
 class Employee(MongoModel):
     company_id: PyObjectId
-    name_en: str = Field(min_length=1, max_length=200)
-    name_ar: str | None = Field(default=None, max_length=200)
-    iqama_number: str | None = Field(default=None, max_length=20)
+    name_en: SafeStr = Field(min_length=1, max_length=200)
+    name_ar: SafeStr | None = Field(default=None, max_length=200)
+    iqama_number: SafeStr | None = Field(default=None, max_length=20)
     iqama_expiry: date | None = None
     passport_expiry: date | None = None
     visa_expiry: date | None = None
-    nationality: str | None = Field(default=None, max_length=100)
-    profession: str | None = Field(default=None, max_length=200)
+    nationality: SafeStr | None = Field(default=None, max_length=100)
+    profession: SafeStr | None = Field(default=None, max_length=200)
     updated_at: datetime = Field(default_factory=utcnow)
 
 

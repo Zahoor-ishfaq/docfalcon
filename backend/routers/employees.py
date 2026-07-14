@@ -1,29 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from backend.core.database import get_db
 from backend.core.dependencies import get_current_user
+from backend.core.validators import SafeStr
 from backend.models.employee import Employee, compute_status
+from backend.services.cache import cache_delete
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+def _stats_key(company_id: str) -> str:
+    return f"stats:{company_id}"
+
 
 class EmployeeIn(BaseModel):
-    name_en: str
-    name_ar: str | None = None
-    iqama_number: str | None = None
+    name_en: SafeStr = Field(min_length=1, max_length=200)
+    name_ar: SafeStr | None = Field(default=None, max_length=200)
+    iqama_number: SafeStr | None = Field(default=None, max_length=20)
     iqama_expiry: date | None = None
     passport_expiry: date | None = None
     visa_expiry: date | None = None
-    nationality: str | None = None
-    profession: str | None = None
+    nationality: SafeStr | None = Field(default=None, max_length=100)
+    profession: SafeStr | None = Field(default=None, max_length=200)
 
 
 class EmployeeUpdate(EmployeeIn):
-    name_en: str | None = None
+    name_en: SafeStr | None = Field(default=None, min_length=1, max_length=200)
 
 
 def _serialize(doc: dict) -> dict:
@@ -48,20 +53,15 @@ async def create_employee(payload: EmployeeIn, current_user: dict = Depends(get_
     doc["company_id"] = company_oid
     res = await db.employees.insert_one(doc)
     doc["_id"] = res.inserted_id
+    await cache_delete(_stats_key(str(current_user["company_id"])))
     return _serialize(doc)
-
-
-VALID_STATUSES = {"expired", "expiring_30d", "valid"}
 
 
 @router.get("")
 async def list_employees(
-    status: str | None = Query(None, description="expired | expiring_30d | valid"),
+    status: Literal["expired", "expiring_30d", "valid"] | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    if status is not None and status not in VALID_STATUSES:
-        raise HTTPException(400, f"status must be one of: {', '.join(sorted(VALID_STATUSES))}")
-
     db = get_db()
     cursor = db.employees.find({"company_id": ObjectId(current_user["company_id"])})
     results = [_serialize(d) async for d in cursor]
@@ -93,6 +93,7 @@ async def update_employee(id: str, payload: EmployeeUpdate, current_user: dict =
     )
     if not res:
         raise HTTPException(404, "Employee not found")
+    await cache_delete(_stats_key(str(current_user["company_id"])))
     return _serialize(res)
 
 
@@ -102,3 +103,4 @@ async def delete_employee(id: str, current_user: dict = Depends(get_current_user
     res = await db.employees.delete_one({"_id": _oid(id), "company_id": ObjectId(current_user["company_id"])})
     if res.deleted_count == 0:
         raise HTTPException(404, "Employee not found")
+    await cache_delete(_stats_key(str(current_user["company_id"])))
