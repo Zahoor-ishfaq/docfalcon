@@ -8,6 +8,8 @@ from anthropic import Anthropic
 from backend.core.config import settings
 from backend.services.rag import retrieve
 from backend.services.cache import cache_get, cache_set
+from backend.core.tracing import get_tracer, trace_generation
+
 
 logger = logging.getLogger(__name__)
 
@@ -131,16 +133,6 @@ def _filter_by_name(query: str, chunks: list[dict]) -> tuple[list[dict], str | N
     return [], f"Multiple employees match your query: {names}. Please use a full name or iqama number to narrow it down."
 
 
-def _trace(name: str, **kwargs) -> None:
-    try:
-        from backend.core.tracing import get_langfuse
-        lf = get_langfuse()
-        if lf:
-            lf.trace(name=name, **kwargs)
-    except Exception as e:
-        logger.debug("langfuse_trace_skipped err=%s", str(e)[:100])
-
-
 async def _cached_retrieve(
     query: str,
     company_id: str,
@@ -208,37 +200,30 @@ async def answer(
 
     # If user asked about a specific person and none matched, return early instead of showing unrelated docs
     if query_has_name and chunks == chunks_before and not clarification:
-        # No employee_label in chunks matched any name word from the query
         has_any_label_match = any(
             _match_words(filter_query.lower(), c.get("employee_label") or "")
             for c in chunks_before
         )
         if not has_any_label_match:
-            result = {
+            return {
                 "answer": "I couldn't find that employee in your documents. Check your data source or try a different spelling.",
                 "citations": [],
                 "tokens_used": 0,
                 "cost_usd": 0.0,
                 "no_hits": True,
             }
-            _trace("chat.answer", input={"query": query}, output=result)
-            return result
 
     if clarification:
-        result = {"answer": clarification, "citations": [], "tokens_used": 0, "cost_usd": 0.0}
-        _trace("chat.answer", input={"query": query}, output=result)
-        return result
+        return {"answer": clarification, "citations": [], "tokens_used": 0, "cost_usd": 0.0}
 
     if not chunks:
-        result = {
+        return {
             "answer": "No matching documents were found. Try broader wording, remove filters, or upload the relevant document first.",
             "citations": [],
             "tokens_used": 0,
             "cost_usd": 0.0,
             "no_hits": True,
         }
-        _trace("chat.answer", input={"query": query, "doc_type": intent_doc_type}, output=result)
-        return result
 
     # One chunk per (employee, doc_type) — keep the highest-scoring
     seen_types: set[str] = set()
@@ -270,17 +255,24 @@ async def answer(
     tokens_out = resp.usage.output_tokens
     cost_usd = round((tokens_in / 1_000_000) * 1.0 + (tokens_out / 1_000_000) * 5.0, 6)
 
-    result = {
+    # structured Langfuse generation with token counts + cost
+    trace_generation(
+        get_tracer(),
+        trace_name="chat",
+        model=MODEL,
+        input=messages,
+        output=text,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        cost_usd=cost_usd,
+    )
+
+    logger.info("chat_answered tokens=%d cost=%.6f citations=%d intent=%s",
+                tokens_in + tokens_out, cost_usd, len(_build_citations(chunks)), intent_doc_type)
+
+    return {
         "answer": text,
         "citations": _build_citations(chunks),
         "tokens_used": tokens_in + tokens_out,
         "cost_usd": cost_usd,
     }
-    _trace(
-        "chat.answer",
-        input={"query": query, "doc_type": intent_doc_type, "document_id": document_id},
-        output={"tokens": result["tokens_used"], "cost_usd": cost_usd, "citation_count": len(result["citations"])},
-        metadata={"model": MODEL},
-    )
-    logger.info("chat_answered tokens=%d cost=%.6f citations=%d intent=%s", result["tokens_used"], cost_usd, len(result["citations"]), intent_doc_type)
-    return result

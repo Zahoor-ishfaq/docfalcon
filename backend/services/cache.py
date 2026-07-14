@@ -35,3 +35,15 @@ async def cache_delete(key: str) -> None:
             client.delete(key)
     except Exception as e:
         logger.warning("cache_delete failed: %s", e)
+
+async def cache_delete_pattern(prefix: str) -> None:
+    """Delete all keys matching a prefix — used to invalidate grouped cache entries."""
+    try:
+        client = _client()
+        if not client:
+            return
+        keys = client.keys(f"{prefix}*")
+        if keys:
+            client.delete(*keys)
+    except Exception as e:
+        logger.warning("cache_delete_pattern failed: %s", e)

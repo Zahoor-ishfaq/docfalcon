@@ -16,6 +16,8 @@ from backend.routers.employees import router as employees_router
 from backend.routers.auth import router as auth_router
 from backend.routers.chat import router as chat_router
 from backend.routers.onboard import router as onboard_router
+from backend.routers.compliance import router as compliance_router
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("docfalcon")
@@ -65,6 +67,7 @@ app.include_router(employees_router)
 app.include_router(dashboard_router)
 app.include_router(chat_router)
 app.include_router(onboard_router)
+app.include_router(compliance_router)
 
 
 @app.exception_handler(Exception)

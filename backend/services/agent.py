@@ -12,7 +12,7 @@ import anthropic
 
 from backend.core.config import settings
 from backend.core.database import get_db
-from backend.core.tracing import get_langfuse
+from backend.core.tracing import get_tracer
 from backend.tools.classify_document import classify_document
 from backend.tools.extract_document import extract_document
 from backend.tools.search_employees import search_employees
@@ -119,7 +119,7 @@ async def run_agent(
 ) -> AsyncGenerator[dict, None]:
     """Yields progress events; caller streams them as SSE."""
 
-    lf = get_langfuse()
+    lf = get_tracer()
     trace = None
     try:
         if lf:

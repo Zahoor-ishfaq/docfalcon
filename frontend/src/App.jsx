@@ -8,6 +8,7 @@ import Employees from './pages/Employees'
 import Upload from './pages/Upload'
 import Chat from './pages/Chat'
 import Onboard from './pages/Onboard'
+import Compliance from "./pages/Compliance";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/onboard" element={<ProtectedRoute><Onboard /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
         </Routes>
       </BrowserRouter>
     </AuthProvider>

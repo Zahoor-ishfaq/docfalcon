@@ -34,6 +34,8 @@ export default function Dashboard() {
   <Link to="/upload" className="hover:text-slate-900">Upload</Link>
   <Link to="/chat" className="hover:text-slate-900">Chat</Link>
   <Link to="/onboard" className="hover:text-slate-900">Onboard</Link>
+  <Link to="/compliance" className="hover:text-slate-900">Compliance</Link>
+  
 </nav>
           <div className="flex items-center gap-4 text-sm text-slate-600">
             <span>{user?.email}</span>
