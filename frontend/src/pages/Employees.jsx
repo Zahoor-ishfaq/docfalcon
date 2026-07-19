@@ -52,7 +52,6 @@ export default function Employees() {
             <Link to="/upload" className="hover:text-slate-900">Upload</Link>
             <Link to="/chat" className="hover:text-slate-900">Chat</Link>
             <Link to="/onboard" className="hover:text-slate-900">Onboard</Link>
-            <Link to="/compliance" className="hover:text-slate-900">Compliance</Link>
 
           </nav>
         </div>

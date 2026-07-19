@@ -6,15 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const STAT_META = [
-  { key: 'total',        label: 'Total employees',   tone: 'text-slate-900' },
-  { key: 'valid',        label: 'Valid',             tone: 'text-emerald-600' },
-  { key: 'expiring_30d', label: 'Expiring in 30 days', tone: 'text-amber-600' },
-  { key: 'expired',      label: 'Expired',           tone: 'text-red-600' },
+  { key: 'total_employees', label: 'Total employees',      tone: 'text-slate-900' },
+  { key: 'valid',           label: 'Valid',                tone: 'text-emerald-600' },
+  { key: 'expiring_soon',   label: 'Expiring in 30 days', tone: 'text-amber-600' },
+  { key: 'expired',         label: 'Expired',             tone: 'text-red-600' },
 ]
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
-  const [data, setData] = useState(null)
+  const [data, setData]   = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -29,14 +29,12 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-6">
           <h1 className="text-lg font-semibold">DocFalcon</h1>
           <nav className="flex gap-4 text-sm text-slate-600 flex-1">
-  <Link to="/dashboard" className="text-slate-900 font-medium">Dashboard</Link>
-  <Link to="/employees" className="hover:text-slate-900">Employees</Link>
-  <Link to="/upload" className="hover:text-slate-900">Upload</Link>
-  <Link to="/chat" className="hover:text-slate-900">Chat</Link>
-  <Link to="/onboard" className="hover:text-slate-900">Onboard</Link>
-  <Link to="/compliance" className="hover:text-slate-900">Compliance</Link>
-  
-</nav>
+            <Link to="/dashboard" className="text-slate-900 font-medium">Dashboard</Link>
+            <Link to="/employees" className="hover:text-slate-900">Employees</Link>
+            <Link to="/upload"    className="hover:text-slate-900">Upload</Link>
+            <Link to="/chat"      className="hover:text-slate-900">Chat</Link>
+            <Link to="/onboard"   className="hover:text-slate-900">Onboard</Link>
+          </nav>
           <div className="flex items-center gap-4 text-sm text-slate-600">
             <span>{user?.email}</span>
             <Button variant="outline" size="sm" onClick={logout}>Sign out</Button>
@@ -45,7 +43,10 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        <h2 className="text-2xl font-semibold">Dashboard</h2>
+        <div>
+          <h2 className="text-2xl font-semibold text-slate-900">Dashboard</h2>
+          <p className="text-sm text-slate-500 mt-1">Compliance overview for your company</p>
+        </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -57,7 +58,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className={`text-3xl font-semibold ${tone}`}>
-                  {data ? data.counts[key] : '—'}
+                  {data ? (data[key] ?? 0) : '—'}
                 </p>
               </CardContent>
             </Card>
@@ -65,37 +66,13 @@ export default function Dashboard() {
         </section>
 
         <section>
-          <h3 className="text-lg font-semibold mb-3">Recent extractions</h3>
+          <h3 className="text-lg font-semibold mb-3">Documents</h3>
           <Card>
-            <CardContent className="p-0">
-              {!data ? (
-                <p className="p-6 text-sm text-slate-500">Loading…</p>
-              ) : data.recent_documents.length === 0 ? (
-                <p className="p-6 text-sm text-slate-500">No documents yet. Upload one to get started.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="text-left text-slate-500 border-b">
-                    <tr>
-                      <th className="px-6 py-3 font-medium">Type</th>
-                      <th className="px-6 py-3 font-medium">Provider</th>
-                      <th className="px-6 py-3 font-medium">Cost (USD)</th>
-                      <th className="px-6 py-3 font-medium">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.recent_documents.map(d => (
-                      <tr key={d._id} className="border-b last:border-0">
-                        <td className="px-6 py-3 capitalize">{d.doc_type}</td>
-                        <td className="px-6 py-3 capitalize">{d.llm_provider}</td>
-                        <td className="px-6 py-3">${(d.cost_usd || 0).toFixed(4)}</td>
-                        <td className="px-6 py-3 text-slate-500">
-                          {d.created_at ? new Date(d.created_at).toLocaleString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+            <CardContent className="p-5">
+              <p className="text-sm text-slate-600">
+                Total documents processed:{' '}
+                <span className="font-semibold text-slate-900">{data?.total_documents ?? '—'}</span>
+              </p>
             </CardContent>
           </Card>
         </section>
